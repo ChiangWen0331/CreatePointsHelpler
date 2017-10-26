@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>three.js - gpu particle system</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            font-family: Monospace;
+            background-color: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #info {
+            position: absolute;
+            top: 0px;
+            width: 100%;
+            padding: 5px;
+            font-family: Monospace;
+            font-size: 13px;
+            text-align: center;
+            color: #ffffff;
+        }
+
+        a {
+            color: #ffffff;
+        }
+
+        input[type="button"] {
+            margin-top: 60px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="container">
+    <input type="button" value="下载配置文件">
+    <input id="fileInput" type="file" size="50" onchange="readFiles(this.files)">
+</div>
+
+<div id="info">
+    <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - GPU particle system plugin by <a
+        href="http://charliehoey.com">Charlie Hoey</a>.
+</div>
+
+<script src="../build/three.js"></script>
+<script src="../examples/js/controls/TrackballControls.js"></script>
+<script src="../examples/js/libs/dat.gui.min.js"></script>
+<script src="../examples/js/libs/stats.min.js"></script>
+<script src="../examples/js/GPUParticleSystem.js"></script>
+
+<script type="text/javascript">
+    var camera, tick = 0,
+        scene, renderer, clock = new THREE.Clock(),
+        controls, container, gui = new dat.GUI({width: 350}),
+        options, spawnerOptions, particleSystem, guiControls;
+    var stats;
+    var mTextureLoader;
+    var maxParticlesNum = 10;
+
+    initTHREE();
+    animate();
+
+    function initTHREE() {
+        container = document.getElementById('container');
+        camera = new THREE.PerspectiveCamera(28, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.z = 100;
+        scene = new THREE.Scene();
+        mTextureLoader = new THREE.TextureLoader();
+        // options passed during each spawned
+        options = {
+            maxParticles: 10,//颗粒数
+            containerCount: 1,//存储颗粒的容器数
+            particleNoiseTex: null,//质感颗粒噪声
+            particleSpriteTex: null,//颗粒纹理
+            position: new THREE.Vector3(),
+            position_x: 0,//x位置
+            position_y: 0,//y位置
+            position_z: 0,//z位置
+            positionRandomness: .3,//颗粒位置的分布宽度
+            velocity: new THREE.Vector3(),//速度
+            velocity_x: 0,
+            velocity_y: 0,
+            velocity_z: 0,
+            velocityRandomness: .5,//粒子速度散射宽度
+            color: "#ffffff",
+            colorRandomness: .2,//粒子散射宽度
+            turbulence: .5,//粒子扰动宽度
+            lifetime: 2,//粒子显示时间
+            size: 10,//粒度大小
+            sizeRandomness: 1,//粒度散射宽度
+            smoothPosition: true//控制颗粒运动速度,false:等速移动
+        };
+
+        spawnerOptions = {
+            spawnRate: 100,//粒子产生率
+            horizontalSpeed: 1.5,
+            verticalSpeed: 1.33,
+            timeScale: 1
+        };
+
+        // The GPU Particle system extends THREE.Object3D, and so you can use it
+        // as you would any other scene graph component.	Particle positions will be
+        // relative to the position of the particle system, but you will probably only need one
+        // system for your whole scene
+        guiControls = new function () {
+            this.maxParticles = 10;//颗粒数
+            this.containerCount = 1;//存储颗粒的容器数
+            this.particleNoiseTex = "textures/perlin-512.png";//质感颗粒噪声
+            this.particleSpriteTex = "textures/perlin-512.png";//颗粒纹理
+
+            this.redraw = function () {
+                if (scene.getObjectByName("particleSystem")) {
+                    scene.remove(scene.getObjectByName("particleSystem"));
+                }
+                particleSystem = null;
+                options.maxParticles = guiControls.maxParticles;
+                maxParticlesNum = guiControls.maxParticles;
+                options.containerCount = guiControls.containerCount;
+
+                draw();
+            };
+        };
+
+        draw();
+
+        gui.add(guiControls, "particleNoiseTex").onChange(guiControls.redraw);
+        gui.add(guiControls, "particleSpriteTex").onChange(guiControls.redraw);
+        gui.add(guiControls, "maxParticles", 0, 1000).step(1).onChange(guiControls.redraw);
+        gui.add(guiControls, "containerCount", 0, 100).step(1).onChange(guiControls.redraw);
+        gui.add(options, "position_x", -500, 500);
+        gui.add(options, "position_y", -500, 500);
+        gui.add(options, "position_z", -500, 500);
+        gui.add(options, "velocity_x", -100, 100);
+        gui.add(options, "velocity_y", -100, 100);
+        gui.add(options, "velocity_z", -100, 100);
+        gui.add(options, "velocityRandomness", 0, 100);
+        gui.add(options, "positionRandomness", 0, 100);
+        gui.add(options, "size", 1, 1000).step(1);
+        gui.add(options, "sizeRandomness", 0, 100);
+        gui.addColor(options, "color");
+        gui.add(options, "colorRandomness", 0, 100);
+        gui.add(options, "lifetime", .1, 100);
+        gui.add(options, "turbulence", 0, 1);
+        gui.add(options, "smoothPosition");
+
+        gui.add(spawnerOptions, "spawnRate", 10, 30000);
+        gui.add(spawnerOptions, "horizontalSpeed", -10, 100);
+        gui.add(spawnerOptions, "verticalSpeed", -10, 100);
+        gui.add(spawnerOptions, "timeScale", -1, 100);
+
+        stats = new Stats();
+        container.appendChild(stats.dom);
+
+        renderer = new THREE.WebGLRenderer();
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.TrackballControls(camera, renderer.domElement);
+        controls.rotateSpeed = 5.0;
+        controls.zoomSpeed = 2.2;
+        controls.panSpeed = 1;
+        controls.dynamicDampingFactor = 0.3;
+        window.addEventListener('resize', onWindowResize, false);
+
+    }
+
+    function draw() {
+        options.particleNoiseTex = mTextureLoader.load(guiControls.particleNoiseTex);
+        options.particleSpriteTex = mTextureLoader.load(guiControls.particleSpriteTex);
+        particleSystem = new THREE.GPUParticleSystem(options);
+        console.log("draw maxParticles:", particleSystem.PARTICLE_COUNT);
+        particleSystem.name = "particleSystem";
+        scene.add(particleSystem);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        if (particleSystem != null) {
+            var delta = clock.getDelta() * spawnerOptions.timeScale;
+//            console.log("animate delta:", delta);
+            tick += delta;
+//            console.log("animate tick:", tick);
+            if (tick < 0) tick = 0;
+            if (delta > 0) {
+                options.position.x = options.position_x;
+                options.position.y = options.position_y;
+                options.position.z = options.position_z;
+
+                options.velocity.x = options.velocity_x;
+                options.velocity.y = options.velocity_y;
+                options.velocity.z = options.velocity_z;
+
+//            options.position.x = Math.sin(tick * spawnerOptions.horizontalSpeed) * 20;
+//            options.position.y = Math.sin(tick * spawnerOptions.verticalSpeed) * 10;
+//            options.position.z = Math.sin(tick * spawnerOptions.horizontalSpeed + spawnerOptions.verticalSpeed) * 5;
+                for (var x = 0; x < spawnerOptions.spawnRate * delta; x++) {
+                    // Yep, that's really it.	Spawning particles is super cheap, and once you spawn them, the rest of
+                    // their lifecycle is handled entirely on the GPU, driven by a time uniform updated below
+                    particleSystem.spawnParticle(options);
+                }
+
+            }
+            particleSystem.update(tick);
+        }
+
+        render();
+        stats.update();
+    }
+
+    function render() {
+        renderer.render(scene, camera);
+    }
+
+
+    /**
+     * 将粒子配置参数数组转json格式的字符串
+     */
+    function setPointConfig() {
+        var jsonJson = '{"Points":[{"maxParticles":' + options.maxParticles + ',"containerCount":' + options.containerCount +
+            ',"particleNoiseTex":"' + guiControls.particleNoiseTex + '","particleSpriteTex":"' + guiControls.particleSpriteTex +
+            '","position_x":' + options.position_x + ',"position_y":' + options.position_y + ',"position_z":' +
+            options.position_z + ',"velocity_x":' + options.velocity_x + ',"velocity_y":' + options.velocity_y + ',"velocity_z":' +
+            options.velocity_z + ',"velocityRandomness":' + options.velocityRandomness + ',"positionRandomness":' +
+            options.positionRandomness + ',"size":' + options.size + ',"sizeRandomness":' + options.sizeRandomness +
+            ',"color":"' + options.color + '","colorRandomness":' + options.colorRandomness + ',"lifetime":' +
+            options.lifetime + ',"turbulence":' + options.turbulence + ',"smoothPosition":' + options.smoothPosition +
+            ',"spawnRate":' + spawnerOptions.spawnRate + ',"horizontalSpeed":' + spawnerOptions.horizontalSpeed +
+            ',"verticalSpeed":' + spawnerOptions.verticalSpeed + ',"timeScale":' + spawnerOptions.timeScale + '}]}';
+        var jsonLength = jsonJson.length;
+        console.log("setPointConfig json:", jsonJson);
+        console.log("setPointConfig jsonLength:", jsonLength);
+        return jsonJson;
+    }
+
+    /**
+     * 通过Blob将json字符串下载到本地文件
+     * @type {Element}
+     */
+    var eleButton = document.querySelector('input[type="button"]');
+    // 下载文件方法
+    var funDownload = function (content, filename) {
+        var eleLink = document.createElement('a');
+        eleLink.download = filename;
+        eleLink.style.display = 'none';
+        // 字符内容转变成blob地址
+        var blob = new Blob([content]);
+        eleLink.href = URL.createObjectURL(blob);
+        // 触发点击
+        document.body.appendChild(eleLink);
+        eleLink.click();
+        // 然后移除
+        document.body.removeChild(eleLink);
+    };
+
+    if ('download' in document.createElement('a')) {
+        eleButton.addEventListener('click', function () {
+            funDownload(setPointConfig(), 'pointConfig.json');
+        });
+    } else {
+        eleButton.onclick = function () {
+            alert('浏览器不支持');
+        };
+    }
+
+    /**
+     * 遍历粒子配置参数数组
+     */
+    function createPoints(resultJsonArray) {
+        if (resultJsonArray != null && resultJsonArray.length > 0) {
+            for (var i = 0; i < resultJsonArray.length; i++) {
+                options.containerCount = resultJsonArray[i].containerCount;
+                options.velocityRandomness = resultJsonArray[i].velocityRandomness;
+                options.color = resultJsonArray[i].color;
+                options.particleNoiseTex = mTextureLoader.load(resultJsonArray[i].particleNoiseTex);
+                options.particleSpriteTex = mTextureLoader.load(resultJsonArray[i].particleSpriteTex);
+                options.position.x = resultJsonArray[i].position_x;
+                options.position.y = resultJsonArray[i].position_y;
+                options.position.z = resultJsonArray[i].position_z;
+                options.velocity.x = resultJsonArray[i].velocity_x;
+                options.velocity.y = resultJsonArray[i].velocity_y;
+                options.velocity.z = resultJsonArray[i].velocity_z;
+                options.positionRandomness = resultJsonArray[i].positionRandomness;
+                options.size = resultJsonArray[i].size;
+                options.sizeRandomness = resultJsonArray[i].sizeRandomness;
+                options.colorRandomness = resultJsonArray[i].colorRandomness;
+                options.lifetime = resultJsonArray[i].lifetime;
+                options.turbulence = resultJsonArray[i].turbulence;
+                options.smoothPosition = resultJsonArray[i].smoothPosition;
+                spawnerOptions.spawnRate = resultJsonArray[i].spawnRate;
+                spawnerOptions.horizontalSpeed = resultJsonArray[i].horizontalSpeed;
+                spawnerOptions.verticalSpeed = resultJsonArray[i].verticalSpeed;
+                spawnerOptions.timeScale = resultJsonArray[i].timeScale;
+            }
+            if (scene.getObjectByName("particleSystem")) {
+                scene.remove(scene.getObjectByName("particleSystem"));
+            }
+            particleSystem = null;
+            particleSystem = new THREE.GPUParticleSystem(options);
+            scene.add(particleSystem);
+        }
+    }
+
+    /**
+     * 读取json文件
+     * @param files
+     */
+    function readFiles(files) {
+        var file = files[0];
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            // 这个事件发生，意为着数据准备好了
+            var result = e.target.result.toString();
+            console.log("readFiles result：%s", result);
+            if (result != null && result.length > 0) {
+                var resultJson = eval("(" + result + ")");
+                if (resultJson != null && resultJson.Points != null && resultJson.Points.length > 0) {
+                    createPoints(resultJson.Points);
+                }
+            }
+        };
+        reader.readAsText(file);
+    }
+
+</script>
+</body>
+
+</html>

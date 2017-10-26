@@ -1,0 +1,29 @@
+{
+  "Points": [
+    {
+      "maxParticles": 14,
+      "containerCount": 1,
+      "particleNoiseTex": "textures/perlin-512.png",
+      "particleSpriteTex": "textures/perlin-512.png",
+      "position_x": -15.75998132150363,
+      "position_y": 0,
+      "position_z": 0,
+      "velocity_x": 0,
+      "velocity_y": 0,
+      "velocity_z": 0,
+      "velocityRandomness": 20.03268736866682,
+      "positionRandomness": 25.262666355358395,
+      "size": 29,
+      "sizeRandomness": 1,
+      "color": "#dc3232",
+      "colorRandomness": 8.078449684800374,
+      "lifetime": 23.844618258230213,
+      "turbulence": 0.3123978519729162,
+      "smoothPosition": true,
+      "spawnRate": 1760.5253327107166,
+      "horizontalSpeed": 18.61078683166005,
+      "verticalSpeed": 1.33,
+      "timeScale": 19.98762549614756
+    }
+  ]
+}
